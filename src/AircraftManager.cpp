@@ -7,40 +7,70 @@ constexpr int SCREEN_SIZE_DIV_2 = (SCREEN_SIZE / 2);
 
 void AircraftManager::Initialise()
 {
-    // get centre point + radius
     lat = configServer.GetStoredString("latitude").toDouble();
     lon = configServer.GetStoredString("longitude").toDouble();
     rad = configServer.GetStoredString("radius").toDouble();
 
-    // configuration
     const String renderText = configServer.GetStoredString("infotext");
     const String renderTris = configServer.GetStoredString("triangle");
     if (!renderText.isEmpty()) displayInfoText = renderText == "true" ? true : false;
     if (!renderTris.isEmpty()) displayTriangles = renderTris == "true" ? true : false;
 
-    // calculate how often we can call OpenSky API before being rate limited
+    rotateWithCompass = configServer.GetStoredString("compass-mode") == "true";
+
     constexpr int MS_PER_DAY = 24 * 60 * 60 * 1000;
     constexpr int ANONYMOUS_TOKENS_PER_DAY = 400;
     constexpr int AUTHED_TOKENS_PER_DAY = 4000;
     constexpr int TOKEN_BUFFER = 3;
-    int dailyRequestBudget = ANONYMOUS_TOKENS_PER_DAY - TOKEN_BUFFER; // non-authed tokens minus buffer
+    int dailyRequestBudget = ANONYMOUS_TOKENS_PER_DAY - TOKEN_BUFFER;
 
     const String token = authHandler.GetValidToken(configServer.GetStoredString("opensky-id"), configServer.GetStoredString("opensky-secret"));
     if (!token.isEmpty())
-        dailyRequestBudget = AUTHED_TOKENS_PER_DAY - TOKEN_BUFFER; // authed tokens minus buffer
+        dailyRequestBudget = AUTHED_TOKENS_PER_DAY - TOKEN_BUFFER;
 
     fetchInterval = MS_PER_DAY / dailyRequestBudget;
+
+    const bool batteryMode = configServer.GetStoredString("battery-mode") == "true";
+    if (batteryMode)
+        fetchInterval = static_cast<unsigned long>(fetchInterval * 1.5f);
+}
+
+void AircraftManager::UpdateLocationFromGps()
+{
+    if (configServer.GetStoredString("gps-mode") != "true")
+        return;
+
+    if (!locationProvider.HasFix())
+        return;
+
+    if (!gpsPositionInitialised) {
+        lat = locationProvider.Latitude();
+        lon = locationProvider.Longitude();
+        gpsPositionInitialised = true;
+        return;
+    }
+
+    locationProvider.TryUpdatePosition(lat, lon);
+}
+
+void AircraftManager::UpdateHeadingFromCompass()
+{
+    if (!rotateWithCompass || !orientationProvider.IsAvailable())
+        return;
+
+    headingDeg = orientationProvider.HeadingDeg();
 }
 
 void AircraftManager::Update()
 {
+    UpdateLocationFromGps();
+    UpdateHeadingFromCompass();
+
     unsigned long now = millis();
 
-    // fetch cycle
     if (now - lastFetch >= fetchInterval) {
         lastFetch = now;
 
-        // auth
         const String token = authHandler.GetValidToken(
             configServer.GetStoredString("opensky-id"),
             configServer.GetStoredString("opensky-secret")
@@ -49,7 +79,6 @@ void AircraftManager::Update()
         std::vector<std::pair<String, String>> headers = {};
         if (!token.isEmpty()) headers.push_back({ "Authorization", "Bearer " + token });
 
-        // request
         HttpResult result = http.Get(
             "https://opensky-network.org/api/states/all",
             {
@@ -61,18 +90,16 @@ void AircraftManager::Update()
             headers
         );
 
-        // If request failed, skip this update
         if (!result.success) {
             Serial.print("[WARN] OpenSky API request failed: ");
             Serial.println(result.errorMessage);
             return;
         }
 
-        // track
         JsonDocument doc;
         deserializeJson(doc, result.response);
         auto aircraft = JsonParser::ParseArray<Aircraft>(doc["states"]);
-        now = millis(); // override with post-parse timestamp
+        now = millis();
 
         for (auto& ac : aircraft) {
             auto it = trackedAircraft.find(ac.icao24);
@@ -82,7 +109,6 @@ void AircraftManager::Update()
                 it->second.Update(ac, now);
         }
 
-        // remove any planes that disappeared from the feed
         for (auto it = trackedAircraft.begin(); it != trackedAircraft.end(); ) {
             bool aircraftPresent = std::any_of(aircraft.begin(), aircraft.end(), [&](const Aircraft& ac) { return ac.icao24 == it->first; });
             if (!aircraftPresent)
@@ -126,14 +152,24 @@ void AircraftManager::DrawRadarCircles(LGFX_Sprite& backbuffer) const
 
 std::pair<int, int> AircraftManager::ProjectCoordinateToScreen(float predLat, float predLon) const
 {
-    const float dLon = predLon - lon;
-    const float dLat = predLat - lat;
+    const float dLon = predLon - static_cast<float>(lon);
+    const float dLat = predLat - static_cast<float>(lat);
 
-    const float normLon = (dLon + rad) / (2.0f * rad);
-    const float normLat = (dLat + rad) / (2.0f * rad);
+    float normEast = dLon / (2.0f * static_cast<float>(rad));
+    float normNorth = dLat / (2.0f * static_cast<float>(rad));
 
-    const int x = static_cast<int>(normLon * SCREEN_SIZE);
-    const int y = static_cast<int>(SCREEN_SIZE - (normLat * SCREEN_SIZE));
+    if (rotateWithCompass) {
+        const float headingRad = radians(-headingDeg);
+        const float cosH = cosf(headingRad);
+        const float sinH = sinf(headingRad);
+        const float rotatedEast = normEast * cosH - normNorth * sinH;
+        const float rotatedNorth = normEast * sinH + normNorth * cosH;
+        normEast = rotatedEast;
+        normNorth = rotatedNorth;
+    }
+
+    const int x = static_cast<int>((normEast + 0.5f) * SCREEN_SIZE);
+    const int y = static_cast<int>(SCREEN_SIZE - ((normNorth + 0.5f) * SCREEN_SIZE));
 
     return { x, y };
 }
@@ -151,8 +187,12 @@ void AircraftManager::DrawAircraftInfo(LGFX_Sprite& backbuffer, int x, int y, co
 
 void AircraftManager::DrawAircraftTriangle(LGFX_Sprite& backbuffer, int x, int y, const TrackedAircraft& tracked) const
 {
-    const float dx = std::sin(radians(tracked.state.trueTrack));
-    const float dy = -std::cos(radians(tracked.state.trueTrack));
+    float track = tracked.state.trueTrack;
+    if (rotateWithCompass)
+        track -= headingDeg;
+
+    const float dx = std::sin(radians(track));
+    const float dy = -std::cos(radians(track));
     const float px = -dy;
     const float py = dx;
 

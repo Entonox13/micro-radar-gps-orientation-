@@ -1,5 +1,9 @@
 #include "ConfigurationWebServer.h"
+#include "LocationProvider.h"
+#include "OrientationProvider.h"
+#include "AircraftManager.h"
 #include <ESPmDNS.h>
+#include <ArduinoJson.h>
 
 // HTML stored in flash
 // %PLACEHOLDER% tokens are substituted at serve time by the template processor
@@ -53,6 +57,51 @@ static const char CONFIG_HTML[] PROGMEM = R"(
                         value='%RADIUS%'
                         class="flex-1 border border-green-500 bg-gray-900 w-full px-3 py-2 text-lg sm:text-base sm:px-1 sm:py-0">
                 </label>
+
+                <fieldset class="border border-green-500/50 p-4 flex flex-col gap-3">
+                    <legend class="px-2">Portable sensors</legend>
+
+                    <label class="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                        <span>GPS auto-position:</span>
+                        <input
+                            name="gps-mode"
+                            type="checkbox"
+                            %GPS_MODE%
+                            class="px-3 sm:px-1 accent-green-500">
+                    </label>
+
+                    <label class="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                        <span>Compass rotation:</span>
+                        <input
+                            name="compass-mode"
+                            type="checkbox"
+                            %COMPASS_MODE%
+                            class="px-3 sm:px-1 accent-green-500">
+                    </label>
+
+                    <label class="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                        <span>Compass offset (&deg;):</span>
+                        <input
+                            name="compass-offset"
+                            type="number"
+                            min="-180"
+                            max="180"
+                            step="1"
+                            value='%COMPASS_OFFSET%'
+                            class="flex-1 border border-green-500 bg-gray-900 w-full px-3 py-2 text-lg sm:text-base sm:px-1 sm:py-0">
+                    </label>
+
+                    <label class="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                        <span>Battery mode:</span>
+                        <input
+                            name="battery-mode"
+                            type="checkbox"
+                            %BATTERY_MODE%
+                            class="px-3 sm:px-1 accent-green-500">
+                    </label>
+
+                    <p id="sensor-status" class="text-green-400/80 text-sm">Loading sensor status...</p>
+                </fieldset>
 
                 <label class="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                     <span>OpenSkyAPI Client ID:</span>
@@ -109,6 +158,22 @@ static const char CONFIG_HTML[] PROGMEM = R"(
         </fieldset>
 
         <script>
+            function refreshSensorStatus() {
+                fetch('/status')
+                    .then(r => r.json())
+                    .then(data => {
+                        const gps = data.gpsFix ? `GPS fix: ${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)}` : 'GPS: no fix';
+                        const compass = data.compassAvailable ? `Heading: ${data.heading.toFixed(0)}&deg;` : 'Compass: not detected';
+                        document.getElementById('sensor-status').innerHTML = `${gps}<br>${compass}`;
+                    })
+                    .catch(() => {
+                        document.getElementById('sensor-status').textContent = 'Sensor status unavailable';
+                    });
+            }
+
+            refreshSensorStatus();
+            setInterval(refreshSensorStatus, 3000);
+
             document.getElementById('cfg').addEventListener('submit', function(e) {
                 e.preventDefault();
                 fetch(this.action, { method: 'POST', body: new FormData(this) })
@@ -119,6 +184,13 @@ static const char CONFIG_HTML[] PROGMEM = R"(
     </body>
 </html>
 )";
+
+void ConfigurationWebServer::SetSensorProviders(LocationProvider& gps, OrientationProvider& compass, AircraftManager& aircraft)
+{
+    locationProvider = &gps;
+    orientationProvider = &compass;
+    aircraftManager = &aircraft;
+}
 
 void ConfigurationWebServer::Initialise() {
     // start mDNS and check result
@@ -140,6 +212,10 @@ void ConfigurationWebServer::Initialise() {
         const String scanlineEnabled = prefs.getString("scanline", "true");
         const String infoTextEnabled = prefs.getString("infotext", "true");
         const String triangleEnabled = prefs.getString("triangle", "true");
+        const String gpsModeEnabled = prefs.getString("gps-mode", "false");
+        const String compassModeEnabled = prefs.getString("compass-mode", "false");
+        const String compassOffset = prefs.getString("compass-offset", "0");
+        const String batteryModeEnabled = prefs.getString("battery-mode", "false");
         prefs.end();
 
         // mask secret before sending to client
@@ -149,7 +225,7 @@ void ConfigurationWebServer::Initialise() {
         AsyncWebServerResponse* response = request->beginResponse(
             200, "text/html",
             (const uint8_t*)CONFIG_HTML, sizeof(CONFIG_HTML) - 1,
-            [latitude, longitude, radius, openskyClientId, openskySecret, scanlineEnabled, infoTextEnabled, triangleEnabled]
+            [latitude, longitude, radius, openskyClientId, openskySecret, scanlineEnabled, infoTextEnabled, triangleEnabled, gpsModeEnabled, compassModeEnabled, compassOffset, batteryModeEnabled]
             (const String& var) -> String {
                 if (var == "LATITUDE")       return latitude;
                 if (var == "LONGITUDE")      return longitude;
@@ -159,6 +235,10 @@ void ConfigurationWebServer::Initialise() {
                 if (var == "SCANLINE")       return scanlineEnabled == "true" ? "checked" : "";
                 if (var == "INFOTEXT")       return infoTextEnabled == "true" ? "checked" : "";
                 if (var == "TRIANGLE")       return triangleEnabled == "true" ? "checked" : "";
+                if (var == "GPS_MODE")       return gpsModeEnabled == "true" ? "checked" : "";
+                if (var == "COMPASS_MODE")   return compassModeEnabled == "true" ? "checked" : "";
+                if (var == "COMPASS_OFFSET") return compassOffset;
+                if (var == "BATTERY_MODE")   return batteryModeEnabled == "true" ? "checked" : "";
                 return "";
             }
         );
@@ -198,12 +278,46 @@ void ConfigurationWebServer::Initialise() {
         prefs.putString("scanline", request->hasParam("scanline", true) ? "true" : "false");
         prefs.putString("triangle", request->hasParam("triangle", true) ? "true" : "false");
         prefs.putString("infotext", request->hasParam("infotext", true) ? "true" : "false");
+        prefs.putString("gps-mode", request->hasParam("gps-mode", true) ? "true" : "false");
+        prefs.putString("compass-mode", request->hasParam("compass-mode", true) ? "true" : "false");
+        prefs.putString("battery-mode", request->hasParam("battery-mode", true) ? "true" : "false");
+        TrySaveParam("compass-offset");
         prefs.end();
 
         request->send(200, "text/html", "Saved - restarting device...");
         ESP.restart();
         }
     );
+
+    server.on("/status", HTTP_GET, [&](AsyncWebServerRequest* request) {
+        JsonDocument doc;
+
+        if (locationProvider != nullptr) {
+            doc["gpsEnabled"] = locationProvider->IsEnabled();
+            doc["gpsFix"] = locationProvider->HasFix();
+            if (aircraftManager != nullptr) {
+                doc["latitude"] = locationProvider->HasFix() ? locationProvider->Latitude() : aircraftManager->GetLatitude();
+                doc["longitude"] = locationProvider->HasFix() ? locationProvider->Longitude() : aircraftManager->GetLongitude();
+            }
+            doc["hdop"] = locationProvider->Hdop();
+        }
+
+        if (orientationProvider != nullptr) {
+            doc["compassEnabled"] = orientationProvider->IsEnabled();
+            doc["compassAvailable"] = orientationProvider->IsAvailable();
+            doc["heading"] = orientationProvider->HeadingDeg();
+        }
+
+        if (aircraftManager != nullptr) {
+            doc["activeLatitude"] = aircraftManager->GetLatitude();
+            doc["activeLongitude"] = aircraftManager->GetLongitude();
+            doc["compassRotation"] = aircraftManager->IsCompassRotationEnabled();
+        }
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
 
     server.begin();
 }

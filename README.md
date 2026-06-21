@@ -188,6 +188,39 @@ That's it! Once you've configured everything, you should see a live view of all 
 
 <img width="400" alt="IMG_7935" src="https://github.com/user-attachments/assets/118b9a1c-c2c0-488d-b638-d8684a30b1d7" />
 
+### Portable mode (GPS + compass + battery)
+
+This fork adds support for a portable, battery-powered setup where the radar centre follows your GPS position and the display rotates with a compass.
+
+#### Additional hardware
+
+| Component | Recommendation | Connection (ESP32-C3) |
+|-----------|----------------|------------------------|
+| GPS module | NEO-6M, NEO-8M, or ATGM336H (3.3 V) | TX → GPIO 4, RX → GPIO 5, VCC → 3.3 V, GND → GND |
+| Compass | QMC5883L magnetometer module (3.3 V) | SDA → GPIO 8, SCL → GPIO 9, VCC → 3.3 V, GND → GND |
+| Battery | 3.7 V LiPo + TP4056 charger + boost to 5 V USB, or a USB power bank | Via USB-C |
+
+Pin assignments are defined in `include/SensorConfig.h`. If your wiring differs, update the constants there before flashing.
+
+#### Configuration options
+
+On the web config page (`http://microradar.local`):
+
+- **GPS auto-position** — uses live GPS coordinates as the radar centre (manual lat/lon is used as fallback until a fix is acquired)
+- **Compass rotation** — rotates the map and sweep line so the top of the display points in the direction you are facing
+- **Compass offset** — calibration offset in degrees if the heading is wrong (point north, read the heading on the status line, then enter the correction)
+- **Battery mode** — reduces backlight brightness, enables WiFi power saving, and slightly increases the API fetch interval to extend runtime
+
+A live **sensor status** line on the config page shows GPS fix and current heading.
+
+#### Tips for battery use
+
+- Use a compact 5 V USB power bank or a LiPo with a 5 V boost module — the display and WiFi are the main power consumers
+- Enable **Battery mode** in the config page
+- Keep the GPS module near a window or outdoors for a faster first fix
+- Calibrate the compass away from magnets, speakers, and metal enclosures
+- A smaller radar radius (e.g. 0.5–1°) reduces API load when moving
+
 ## Notes
 
 > Designed and developed as part of a wedding present for a mate who loves aviation (congratulations to both him and his wife!)
