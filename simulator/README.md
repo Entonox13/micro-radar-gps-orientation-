@@ -22,11 +22,14 @@ python app.py
 
 ## Utilisation
 
-1. Cliquez sur **Ma position (IP)** pour centrer le radar sur votre zone (approximation via IP).
-2. Ajustez le **rayon** (en degrés, max 2.5 comme sur l'appareil).
-3. Optionnel : renseignez vos identifiants **OpenSky** pour passer de 400 à 4000 requêtes/jour (~22 s entre chaque mise à jour).
-4. Cliquez sur **Rafraîchir** ou attendez le fetch automatique.
-5. Lisez le panneau **Statut / fiabilité** pour savoir si le projet serait animé chez vous.
+1. Entrez vos **coordonnées GPS** (latitude / longitude en degrés décimaux WGS84).
+   - Sur Google Maps : clic droit sur un lieu → **Coordonnées** → copier/coller dans le champ **Coller lat, lon**
+   - Ou saisir latitude et longitude séparément (6 décimales ≈ précision de 10 m)
+2. Cliquez sur **Appliquer la position**.
+3. Ajustez le **rayon** (en degrés, max 2.5 comme sur l'appareil).
+4. Optionnel : renseignez vos identifiants **OpenSky** pour passer de 400 à 4000 requêtes/jour (~22 s entre chaque mise à jour).
+5. Cliquez sur **Rafraîchir** ou attendez le fetch automatique.
+6. Lisez le panneau **Statut / fiabilité** pour savoir si le projet serait animé à cet endroit précis.
 
 ## Options testables
 
@@ -41,6 +44,5 @@ La configuration est sauvegardée dans `simulator/config.json`.
 
 ## Limites
 
-- La géolocalisation IP est approximative (ville/région, pas le mètre près).
-- Pas de GPS/boussole réels : utilisez lat/lon manuels pour une position exacte.
+- Pas de GPS/boussole réels dans le simulateur : vous fournissez les coordonnées manuellement.
 - Même source de données que l'appareil (OpenSky) : si le simulateur voit peu d'avions, l'appareil aussi.

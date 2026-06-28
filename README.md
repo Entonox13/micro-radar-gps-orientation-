@@ -231,7 +231,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Use **Ma position (IP)** to centre the radar on your area, then check the **Statut / fiabilité** panel. See `simulator/README.md` for details.
+Use **Appliquer la position** with your GPS coordinates (from Google Maps, your phone, etc.), then check the **Statut / fiabilité** panel. See `simulator/README.md` for details.
 
 ## Notes
 

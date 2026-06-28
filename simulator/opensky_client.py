@@ -187,14 +187,3 @@ class OpenSkyClient:
         except requests.RequestException as exc:
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             return FetchResult(False, [], 0, str(exc), elapsed_ms)
-
-
-def geolocate_ip() -> tuple[float, float, str]:
-    """Approximate location from public IP (no API key)."""
-    response = requests.get("http://ip-api.com/json/?fields=status,lat,lon,city,country", timeout=10)
-    response.raise_for_status()
-    data = response.json()
-    if data.get("status") != "success":
-        raise RuntimeError("IP geolocation failed")
-    label = f"{data.get('city', '?')}, {data.get('country', '?')}"
-    return float(data["lat"]), float(data["lon"]), label

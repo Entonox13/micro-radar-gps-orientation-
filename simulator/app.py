@@ -11,12 +11,33 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from opensky_client import OpenSkyClient, geolocate_ip
+from opensky_client import OpenSkyClient
 from radar_engine import SCREEN_SIZE, RadarEngine
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
 CANVAS_SCALE = 2
 CANVAS_SIZE = SCREEN_SIZE * CANVAS_SCALE
+
+
+def parse_coordinate(value: str) -> float:
+    """Parse decimal degrees, accepting comma as decimal separator."""
+    cleaned = value.strip().replace(",", ".")
+    return float(cleaned)
+
+
+def parse_coordinate_pair(value: str) -> tuple[float, float]:
+    """Parse 'lat, lon' pasted from Google Maps or similar."""
+    parts = [p.strip() for p in value.replace(";", ",").split(",") if p.strip()]
+    if len(parts) != 2:
+        raise ValueError("Format attendu : latitude, longitude")
+    return parse_coordinate(parts[0]), parse_coordinate(parts[1])
+
+
+def validate_coordinates(lat: float, lon: float) -> None:
+    if not -90.0 <= lat <= 90.0:
+        raise ValueError("La latitude doit être entre -90 et 90.")
+    if not -180.0 <= lon <= 180.0:
+        raise ValueError("La longitude doit être entre -180 et 180.")
 
 
 class MicroRadarApp(tk.Tk):
@@ -59,8 +80,12 @@ class MicroRadarApp(tk.Tk):
         title = ttk.Label(right, text="Configuration", font=("TkDefaultFont", 14, "bold"))
         title.pack(anchor=tk.W, pady=(0, 8))
 
-        self.lat_var = tk.StringVar(value="48.8566")
-        self.lon_var = tk.StringVar(value="2.3522")
+        gps_frame = ttk.LabelFrame(right, text="Position GPS (WGS84)", padding=8)
+        gps_frame.pack(fill=tk.X, pady=(0, 8))
+
+        self.lat_var = tk.StringVar(value="")
+        self.lon_var = tk.StringVar(value="")
+        self.paste_var = tk.StringVar()
         self.radius_var = tk.StringVar(value="1.0")
         self.client_id_var = tk.StringVar()
         self.client_secret_var = tk.StringVar()
@@ -70,21 +95,40 @@ class MicroRadarApp(tk.Tk):
         self.triangles_var = tk.BooleanVar(value=True)
         self.info_var = tk.BooleanVar(value=False)
         self.heading_var = tk.DoubleVar(value=0.0)
-        self.location_label_var = tk.StringVar(value="Position manuelle")
+        self.position_status_var = tk.StringVar(value="Entrez vos coordonnées GPS.")
 
-        self._add_entry(right, "Latitude", self.lat_var)
-        self._add_entry(right, "Longitude", self.lon_var)
+        ttk.Label(
+            gps_frame,
+            text="Ex. Google Maps : clic droit sur un lieu → coordonnées",
+            wraplength=320,
+        ).pack(anchor=tk.W, pady=(0, 6))
+
+        self._add_entry(gps_frame, "Latitude (°)", self.lat_var)
+        self._add_entry(gps_frame, "Longitude (°)", self.lon_var)
+
+        paste_row = ttk.Frame(gps_frame)
+        paste_row.pack(fill=tk.X, pady=3)
+        ttk.Label(paste_row, text="Coller lat, lon", width=18).pack(side=tk.LEFT)
+        paste_entry = ttk.Entry(paste_row, textvariable=self.paste_var)
+        paste_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        paste_entry.bind("<Return>", lambda _e: self._apply_pasted_coordinates())
+
+        ttk.Label(gps_frame, textvariable=self.position_status_var, foreground="#4ade80").pack(
+            anchor=tk.W, pady=(6, 4)
+        )
+
+        gps_btn_row = ttk.Frame(gps_frame)
+        gps_btn_row.pack(fill=tk.X)
+        ttk.Button(gps_btn_row, text="Appliquer la position", command=self._apply_gps_position).pack(side=tk.LEFT)
+
         self._add_entry(right, "Rayon (°)", self.radius_var)
         self._add_entry(right, "OpenSky Client ID", self.client_id_var)
         self._add_entry(right, "OpenSky Client Secret", self.client_secret_var, show="*")
 
-        ttk.Label(right, textvariable=self.location_label_var).pack(anchor=tk.W, pady=(8, 4))
-
         btn_row = ttk.Frame(right)
-        btn_row.pack(fill=tk.X, pady=4)
-        ttk.Button(btn_row, text="Ma position (IP)", command=self._use_ip_location).pack(side=tk.LEFT)
-        ttk.Button(btn_row, text="Rafraîchir", command=self._fetch_now).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="Sauvegarder", command=self._save_config).pack(side=tk.LEFT)
+        btn_row.pack(fill=tk.X, pady=8)
+        ttk.Button(btn_row, text="Rafraîchir", command=self._fetch_now).pack(side=tk.LEFT)
+        ttk.Button(btn_row, text="Sauvegarder", command=self._save_config).pack(side=tk.LEFT, padx=6)
 
         checks = ttk.LabelFrame(right, text="Options", padding=8)
         checks.pack(fill=tk.X, pady=10)
@@ -127,7 +171,7 @@ class MicroRadarApp(tk.Tk):
 
         hint = ttk.Label(
             right,
-            text="Astuce : faites tourner le cap pour tester la rotation du radar.",
+            text="Astuce : utilisez 6 décimales pour une précision d'environ 10 m.",
             wraplength=320,
         )
         hint.pack(anchor=tk.W, pady=(6, 0))
@@ -140,13 +184,43 @@ class MicroRadarApp(tk.Tk):
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         entry.bind("<FocusOut>", lambda _e: self._apply_settings_to_engine())
 
-    def _apply_settings_to_engine(self) -> None:
+    def _read_coordinates(self) -> tuple[float, float]:
+        lat = parse_coordinate(self.lat_var.get())
+        lon = parse_coordinate(self.lon_var.get())
+        validate_coordinates(lat, lon)
+        return lat, lon
+
+    def _apply_pasted_coordinates(self) -> None:
         try:
-            self.engine.latitude = float(self.lat_var.get())
-            self.engine.longitude = float(self.lon_var.get())
-            self.engine.radius_deg = max(0.000001, min(2.5, float(self.radius_var.get())))
-        except ValueError:
+            lat, lon = parse_coordinate_pair(self.paste_var.get())
+            validate_coordinates(lat, lon)
+            self.lat_var.set(f"{lat:.6f}")
+            self.lon_var.set(f"{lon:.6f}")
+            self._apply_gps_position()
+        except ValueError as exc:
+            messagebox.showerror("Coordonnées", str(exc))
+
+    def _apply_gps_position(self) -> None:
+        try:
+            lat, lon = self._read_coordinates()
+        except ValueError as exc:
+            messagebox.showerror("Coordonnées", str(exc))
             return
+
+        self.lat_var.set(f"{lat:.6f}")
+        self.lon_var.set(f"{lon:.6f}")
+        self.position_status_var.set(f"Position : {lat:.6f}°, {lon:.6f}°")
+        self._apply_settings_to_engine()
+        self._fetch_now()
+
+    def _apply_settings_to_engine(self) -> bool:
+        try:
+            lat, lon = self._read_coordinates()
+            self.engine.latitude = lat
+            self.engine.longitude = lon
+            self.engine.radius_deg = max(0.000001, min(2.5, float(self.radius_var.get().replace(",", "."))))
+        except ValueError:
+            return False
 
         self.engine.client.set_credentials(self.client_id_var.get(), self.client_secret_var.get())
         self.engine.compass_mode = self.compass_mode_var.get()
@@ -156,6 +230,7 @@ class MicroRadarApp(tk.Tk):
         self.engine.show_info = self.info_var.get()
         self.engine.heading_deg = float(self.heading_var.get())
         self.heading_label.configure(text=f"{self.engine.heading_deg:.0f}°")
+        return True
 
     def _load_config(self) -> None:
         if not CONFIG_PATH.exists():
@@ -167,6 +242,12 @@ class MicroRadarApp(tk.Tk):
 
         self.lat_var.set(str(data.get("latitude", self.lat_var.get())))
         self.lon_var.set(str(data.get("longitude", self.lon_var.get())))
+        if self.lat_var.get() and self.lon_var.get():
+            try:
+                lat, lon = self._read_coordinates()
+                self.position_status_var.set(f"Position : {lat:.6f}°, {lon:.6f}°")
+            except ValueError:
+                self.position_status_var.set("Coordonnées sauvegardées invalides.")
         self.radius_var.set(str(data.get("radius", self.radius_var.get())))
         self.client_id_var.set(data.get("opensky_id", ""))
         self.client_secret_var.set(data.get("opensky_secret", ""))
@@ -176,13 +257,21 @@ class MicroRadarApp(tk.Tk):
         self.triangles_var.set(bool(data.get("triangles", True)))
         self.info_var.set(bool(data.get("info", False)))
         self.heading_var.set(float(data.get("heading", 0.0)))
-        self.location_label_var.set(data.get("location_label", "Position manuelle"))
 
     def _save_config(self) -> None:
-        self._apply_settings_to_engine()
+        try:
+            lat, lon = self._read_coordinates()
+        except ValueError as exc:
+            messagebox.showerror("Coordonnées", str(exc))
+            return
+
+        if not self._apply_settings_to_engine():
+            messagebox.showerror("Coordonnées", "Impossible d'enregistrer : coordonnées invalides.")
+            return
+
         payload = {
-            "latitude": self.engine.latitude,
-            "longitude": self.engine.longitude,
+            "latitude": lat,
+            "longitude": lon,
             "radius": self.engine.radius_deg,
             "opensky_id": self.client_id_var.get(),
             "opensky_secret": self.client_secret_var.get(),
@@ -192,33 +281,25 @@ class MicroRadarApp(tk.Tk):
             "triangles": self.triangles_var.get(),
             "info": self.info_var.get(),
             "heading": self.engine.heading_deg,
-            "location_label": self.location_label_var.get(),
         }
         CONFIG_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        self.position_status_var.set(f"Position : {lat:.6f}°, {lon:.6f}°")
         messagebox.showinfo("Sauvegarde", f"Configuration enregistrée dans\n{CONFIG_PATH}")
-
-    def _use_ip_location(self) -> None:
-        def worker() -> None:
-            try:
-                lat, lon, label = geolocate_ip()
-                self.after(0, lambda: self._set_location(lat, lon, label))
-            except Exception as exc:
-                self.after(0, lambda: messagebox.showerror("Géolocalisation", str(exc)))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _set_location(self, lat: float, lon: float, label: str) -> None:
-        self.lat_var.set(f"{lat:.6f}")
-        self.lon_var.set(f"{lon:.6f}")
-        self.location_label_var.set(f"Position : {label}")
-        self._apply_settings_to_engine()
-        self._fetch_now()
 
     def _fetch_now(self) -> None:
         if self._busy:
             return
+        try:
+            self._read_coordinates()
+        except ValueError as exc:
+            messagebox.showerror("Coordonnées", str(exc))
+            return
+
         self._busy = True
-        self._apply_settings_to_engine()
+        if not self._apply_settings_to_engine():
+            self._busy = False
+            messagebox.showerror("Coordonnées", "Entrez une latitude et une longitude valides.")
+            return
 
         def worker() -> None:
             stats = self.engine.update(force=True)
@@ -230,8 +311,15 @@ class MicroRadarApp(tk.Tk):
         self._busy = False
         self._update_stats(stats)
 
+    def _has_valid_position(self) -> bool:
+        try:
+            self._read_coordinates()
+            return True
+        except ValueError:
+            return False
+
     def _tick(self) -> None:
-        if not self._busy and self.engine.should_fetch(self.engine.now_ms()):
+        if self._has_valid_position() and not self._busy and self.engine.should_fetch(self.engine.now_ms()):
             self._fetch_now()
         else:
             self._draw_frame()
@@ -241,6 +329,7 @@ class MicroRadarApp(tk.Tk):
     def _update_stats(self, stats) -> None:
         auth = "authentifié" if self.client_id_var.get() and self.client_secret_var.get() else "anonyme"
         lines = [
+            f"Position : {self.engine.latitude:.6f}°, {self.engine.longitude:.6f}°",
             f"Avions en vol : {stats.aircraft_in_air}",
             f"Total suivi : {stats.aircraft_total}",
             f"API : {'OK' if stats.last_fetch_ok else 'ERREUR'} ({stats.last_fetch_ms:.0f} ms)",
