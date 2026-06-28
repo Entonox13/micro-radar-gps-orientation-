@@ -70,3 +70,5 @@ nbbuild.xml
 nbproject
 .pio
 .vscode
+simulator/config.json
+simulator/__pycache__/
