@@ -221,6 +221,18 @@ A live **sensor status** line on the config page shows GPS fix and current headi
 - Calibrate the compass away from magnets, speakers, and metal enclosures
 - A smaller radar radius (e.g. 0.5–1°) reduces API load when moving
 
+### Desktop simulator (test without hardware)
+
+Before building the device, you can test whether OpenSky coverage is good at your location using the Python/Tkinter simulator in `simulator/`:
+
+```bash
+cd simulator
+pip install -r requirements.txt
+python app.py
+```
+
+Use **Ma position (IP)** to centre the radar on your area, then check the **Statut / fiabilité** panel. See `simulator/README.md` for details.
+
 ## Notes
 
 > Designed and developed as part of a wedding present for a mate who loves aviation (congratulations to both him and his wife!)
