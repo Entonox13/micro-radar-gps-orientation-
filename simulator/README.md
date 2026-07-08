@@ -27,7 +27,7 @@ python app.py
    - Ou saisir latitude et longitude séparément (6 décimales ≈ précision de 10 m)
 2. Cliquez sur **Appliquer la position**.
 3. Ajustez le **rayon** (en degrés, max 2.5 comme sur l'appareil).
-4. Optionnel : renseignez vos identifiants **OpenSky** pour passer de 400 à 4000 requêtes/jour (~22 s entre chaque mise à jour).
+4. Optionnel : placez vos identifiants **OpenSky** dans `credentials.json` (fichier exporté depuis votre compte OpenSky) pour passer de 400 à 4000 requêtes/jour (~22 s entre chaque mise à jour). Ce fichier n'est pas versionné (voir `.gitignore`).
 5. Cliquez sur **Rafraîchir** ou attendez le fetch automatique.
 6. Lisez le panneau **Statut / fiabilité** pour savoir si le projet serait animé à cet endroit précis.
 

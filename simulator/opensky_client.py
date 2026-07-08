@@ -2,12 +2,30 @@
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 import requests
+
+CREDENTIALS_PATH = Path(__file__).with_name("credentials.json")
+
+
+def load_credentials_file(path: Path = CREDENTIALS_PATH) -> tuple[str, str]:
+    """Load OpenSky OAuth2 credentials from credentials.json (OpenSky account export)."""
+    if not path.exists():
+        return "", ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "", ""
+
+    client_id = str(data.get("clientId") or data.get("client_id") or "").strip()
+    client_secret = str(data.get("clientSecret") or data.get("client_secret") or "").strip()
+    return client_id, client_secret
 
 
 @dataclass

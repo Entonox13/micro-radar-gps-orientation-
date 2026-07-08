@@ -71,4 +71,5 @@ nbproject
 .pio
 .vscode
 simulator/config.json
+simulator/credentials.json
 simulator/__pycache__/

@@ -187,12 +187,22 @@ void AircraftManager::DrawAircraftInfo(LGFX_Sprite& backbuffer, int x, int y, co
 
 void AircraftManager::DrawAircraftTriangle(LGFX_Sprite& backbuffer, int x, int y, const TrackedAircraft& tracked) const
 {
-    float track = tracked.state.trueTrack;
-    if (rotateWithCompass)
-        track -= headingDeg;
+    const float track = tracked.state.trueTrack;
+    float geoEast = std::sin(radians(track));
+    float geoNorth = std::cos(radians(track));
 
-    const float dx = std::sin(radians(track));
-    const float dy = -std::cos(radians(track));
+    if (rotateWithCompass) {
+        const float headingRad = radians(-headingDeg);
+        const float cosH = cosf(headingRad);
+        const float sinH = sinf(headingRad);
+        const float rotEast = geoEast * cosH - geoNorth * sinH;
+        const float rotNorth = geoEast * sinH + geoNorth * cosH;
+        geoEast = rotEast;
+        geoNorth = rotNorth;
+    }
+
+    const float dx = geoEast;
+    const float dy = -geoNorth;
     const float px = -dy;
     const float py = dx;
 

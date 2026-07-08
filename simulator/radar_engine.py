@@ -199,13 +199,25 @@ class RadarEngine:
                 items.append((tracked, x, y))
         return items
 
-    def triangle_points(self, tracked: TrackedAircraft, x: int, y: int) -> list[tuple[float, float]]:
-        track = tracked.state.true_track
-        if self.compass_mode:
-            track -= self.heading_deg
+    def _track_screen_vector(self, track_deg: float) -> tuple[float, float]:
+        """Geographic track (° from north) as a screen-space unit direction."""
+        track_rad = math.radians(track_deg)
+        east = math.sin(track_rad)
+        north = math.cos(track_rad)
 
-        dx = math.sin(math.radians(track))
-        dy = -math.cos(math.radians(track))
+        if self.compass_mode:
+            heading_rad = math.radians(-self.heading_deg)
+            cos_h = math.cos(heading_rad)
+            sin_h = math.sin(heading_rad)
+            east, north = (
+                east * cos_h - north * sin_h,
+                east * sin_h + north * cos_h,
+            )
+
+        return east, -north
+
+    def triangle_points(self, tracked: TrackedAircraft, x: int, y: int) -> list[tuple[float, float]]:
+        dx, dy = self._track_screen_vector(tracked.state.true_track)
         px = -dy
         py = dx
 

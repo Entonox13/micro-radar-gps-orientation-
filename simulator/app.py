@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import threading
 import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from opensky_client import OpenSkyClient
+from opensky_client import CREDENTIALS_PATH, Aircraft, OpenSkyClient, load_credentials_file
 from radar_engine import SCREEN_SIZE, RadarEngine
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
@@ -19,18 +20,46 @@ CANVAS_SCALE = 2
 CANVAS_SIZE = SCREEN_SIZE * CANVAS_SCALE
 
 
+_WS_RE = re.compile(r"[\s\u00a0\u2009\u202f]+")
+_COORD_PAIR_RE = re.compile(
+    r"(-?\d+(?:[.,]\d+)?)\s*[,;\s]\s*(-?\d+(?:[.,]\d+)?)",
+)
+
+
+def _normalize_coordinate_text(value: str) -> str:
+    cleaned = value.strip()
+    cleaned = _WS_RE.sub(" ", cleaned)
+    cleaned = cleaned.replace("º", "").replace("°", "")
+    cleaned = re.sub(r"\s*[NSEW]\s*", " ", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
+
+
 def parse_coordinate(value: str) -> float:
     """Parse decimal degrees, accepting comma as decimal separator."""
-    cleaned = value.strip().replace(",", ".")
+    cleaned = value.strip()
+    cleaned = _WS_RE.sub("", cleaned)
+    if cleaned.count(",") == 1 and "." not in cleaned:
+        cleaned = cleaned.replace(",", ".")
+    elif "," in cleaned:
+        cleaned = cleaned.replace(",", ".")
     return float(cleaned)
 
 
 def parse_coordinate_pair(value: str) -> tuple[float, float]:
     """Parse 'lat, lon' pasted from Google Maps or similar."""
-    parts = [p.strip() for p in value.replace(";", ",").split(",") if p.strip()]
-    if len(parts) != 2:
+    cleaned = _normalize_coordinate_text(value)
+    if not cleaned:
         raise ValueError("Format attendu : latitude, longitude")
-    return parse_coordinate(parts[0]), parse_coordinate(parts[1])
+
+    if re.search(r",\s", cleaned):
+        parts = re.split(r",\s+", cleaned, maxsplit=1)
+        if len(parts) == 2:
+            return parse_coordinate(parts[0]), parse_coordinate(parts[1])
+
+    match = _COORD_PAIR_RE.search(cleaned)
+    if not match:
+        raise ValueError("Format attendu : latitude, longitude")
+    return parse_coordinate(match.group(1)), parse_coordinate(match.group(2))
 
 
 def validate_coordinates(lat: float, lon: float) -> None:
@@ -38,6 +67,23 @@ def validate_coordinates(lat: float, lon: float) -> None:
         raise ValueError("La latitude doit être entre -90 et 90.")
     if not -180.0 <= lon <= 180.0:
         raise ValueError("La longitude doit être entre -180 et 180.")
+
+
+def aircraft_altitude_m(aircraft: Aircraft) -> int | None:
+    """Barometric altitude in metres, falling back to geometric altitude."""
+    if aircraft.baro_altitude > 0:
+        return int(round(aircraft.baro_altitude))
+    if aircraft.geo_altitude > 0:
+        return int(round(aircraft.geo_altitude))
+    return None
+
+
+def aircraft_info_label(aircraft: Aircraft) -> str:
+    callsign = aircraft.callsign.strip()
+    altitude_m = aircraft_altitude_m(aircraft)
+    if altitude_m is not None:
+        return f"{callsign}\n{altitude_m}m"
+    return callsign
 
 
 class MicroRadarApp(tk.Tk):
@@ -112,6 +158,7 @@ class MicroRadarApp(tk.Tk):
         paste_entry = ttk.Entry(paste_row, textvariable=self.paste_var)
         paste_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         paste_entry.bind("<Return>", lambda _e: self._apply_pasted_coordinates())
+        paste_entry.bind("<FocusOut>", lambda _e: self._apply_pasted_coordinates(silent=True))
 
         ttk.Label(gps_frame, textvariable=self.position_status_var, foreground="#4ade80").pack(
             anchor=tk.W, pady=(6, 4)
@@ -190,17 +237,33 @@ class MicroRadarApp(tk.Tk):
         validate_coordinates(lat, lon)
         return lat, lon
 
-    def _apply_pasted_coordinates(self) -> None:
+    def _apply_pasted_coordinates(self, silent: bool = False) -> bool:
+        paste = self.paste_var.get().strip()
+        if not paste:
+            return False
         try:
-            lat, lon = parse_coordinate_pair(self.paste_var.get())
+            lat, lon = parse_coordinate_pair(paste)
             validate_coordinates(lat, lon)
             self.lat_var.set(f"{lat:.6f}")
             self.lon_var.set(f"{lon:.6f}")
-            self._apply_gps_position()
+            self.position_status_var.set(f"Position : {lat:.6f}°, {lon:.6f}°")
+            self._apply_settings_to_engine()
+            self._fetch_now()
+            return True
         except ValueError as exc:
-            messagebox.showerror("Coordonnées", str(exc))
+            if not silent:
+                messagebox.showerror("Coordonnées", str(exc))
+            return False
 
     def _apply_gps_position(self) -> None:
+        paste = self.paste_var.get().strip()
+        lat_empty = not self.lat_var.get().strip()
+        lon_empty = not self.lon_var.get().strip()
+        if paste and (lat_empty or lon_empty):
+            if not self._apply_pasted_coordinates(silent=False):
+                return
+            return
+
         try:
             lat, lon = self._read_coordinates()
         except ValueError as exc:
@@ -232,12 +295,29 @@ class MicroRadarApp(tk.Tk):
         self.heading_label.configure(text=f"{self.engine.heading_deg:.0f}°")
         return True
 
+    def _load_credentials(self) -> None:
+        client_id, client_secret = load_credentials_file(CREDENTIALS_PATH)
+        if client_id and client_secret:
+            self.client_id_var.set(client_id)
+            self.client_secret_var.set(client_secret)
+            return
+
+        if CONFIG_PATH.exists():
+            try:
+                data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return
+            self.client_id_var.set(data.get("opensky_id", ""))
+            self.client_secret_var.set(data.get("opensky_secret", ""))
+
     def _load_config(self) -> None:
         if not CONFIG_PATH.exists():
+            self._load_credentials()
             return
         try:
             data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
+            self._load_credentials()
             return
 
         self.lat_var.set(str(data.get("latitude", self.lat_var.get())))
@@ -249,14 +329,13 @@ class MicroRadarApp(tk.Tk):
             except ValueError:
                 self.position_status_var.set("Coordonnées sauvegardées invalides.")
         self.radius_var.set(str(data.get("radius", self.radius_var.get())))
-        self.client_id_var.set(data.get("opensky_id", ""))
-        self.client_secret_var.set(data.get("opensky_secret", ""))
         self.compass_mode_var.set(bool(data.get("compass_mode", False)))
         self.battery_mode_var.set(bool(data.get("battery_mode", False)))
         self.scanline_var.set(bool(data.get("scanline", True)))
         self.triangles_var.set(bool(data.get("triangles", True)))
         self.info_var.set(bool(data.get("info", False)))
         self.heading_var.set(float(data.get("heading", 0.0)))
+        self._load_credentials()
 
     def _save_config(self) -> None:
         try:
@@ -273,8 +352,6 @@ class MicroRadarApp(tk.Tk):
             "latitude": lat,
             "longitude": lon,
             "radius": self.engine.radius_deg,
-            "opensky_id": self.client_id_var.get(),
-            "opensky_secret": self.client_secret_var.get(),
             "compass_mode": self.compass_mode_var.get(),
             "battery_mode": self.battery_mode_var.get(),
             "scanline": self.scanline_var.get(),
@@ -382,9 +459,9 @@ class MicroRadarApp(tk.Tk):
                 self.canvas.create_text(
                     sx + 8,
                     sy - 8,
-                    text=tracked.state.callsign.strip(),
+                    text=aircraft_info_label(tracked.state),
                     fill="#008000",
-                    anchor=tk.W,
+                    anchor=tk.NW,
                     font=("TkFixedFont", 9),
                 )
 
