@@ -19,7 +19,7 @@ from microradar_app.controller import RadarController
 from microradar_app.radar_widget import RadarWidget
 
 
-class SettingsPanel(MDBoxLayout):
+class RadarSettingsPanel(MDBoxLayout):
     def __init__(self, controller: RadarController, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
@@ -141,8 +141,8 @@ class SettingsPanel(MDBoxLayout):
             height=dp(180),
             md_bg_color=(0.07, 0.09, 0.15, 1),
         )
-        self.heading_title = MDLabel(text="Cap (°)", font_style="Subtitle1")
-        heading_card.add_widget(self.heading_title)
+        self.cap_section_label = MDLabel(text="Cap (°)", font_style="Subtitle1")
+        heading_card.add_widget(self.cap_section_label)
         self.compass_status_label = MDLabel(
             text=self.controller.compass_status_line(),
             font_style="Caption",
@@ -157,9 +157,7 @@ class SettingsPanel(MDBoxLayout):
         self.compass_offset_field = MDTextField(
             hint_text="Offset boussole (°)",
             text=str(s.compass_offset),
-            mode="rectangle",
         )
-        self.compass_offset_field.bind(focus=self._on_compass_offset_focus)
         heading_card.add_widget(self.compass_offset_field)
         heading_card.add_widget(
             MDLabel(
@@ -213,7 +211,7 @@ class SettingsPanel(MDBoxLayout):
     def update_heading_display(self) -> None:
         uses_compass = self.controller.uses_live_compass()
         self.compass_status_label.text = self.controller.compass_status_line()
-        self.heading_title.text = "Cap boussole (°)" if uses_compass else "Cap manuel (°)"
+        self.cap_section_label.text = "Cap boussole (°)" if uses_compass else "Cap manuel (°)"
         self.heading_slider.disabled = uses_compass
         if uses_compass:
             self.heading_label.text = f"{int(self.controller.effective_heading())}°"
@@ -237,10 +235,6 @@ class SettingsPanel(MDBoxLayout):
             self.controller.settings.compass_offset = float(raw)
         except ValueError:
             self.controller.settings.compass_offset = 0.0
-
-    def _on_compass_offset_focus(self, _field, focused: bool) -> None:
-        if not focused:
-            self.pull_settings()
 
     def _set_option(self, attr: str, value: bool) -> None:
         setattr(self.controller.settings, attr, value)
@@ -313,7 +307,7 @@ class MainScreen(Screen):
         body.add_widget(radar_card)
 
         scroll = MDScrollView()
-        self.settings = SettingsPanel(controller)
+        self.settings = RadarSettingsPanel(controller)
         scroll.add_widget(self.settings)
         body.add_widget(scroll)
 

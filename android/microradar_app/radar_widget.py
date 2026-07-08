@@ -56,9 +56,10 @@ class RadarWidget(Widget):
         self._redraw()
 
     def _redraw(self, *_args) -> None:
-        self.canvas.clear()
-        if self.engine is None or self.width <= 0 or self.height <= 0:
+        if self.canvas is None or self.engine is None or self.width <= 0 or self.height <= 0:
             return
+
+        self.canvas.clear()
 
         side = min(self.width, self.height)
         scale = side / SCREEN_SIZE
