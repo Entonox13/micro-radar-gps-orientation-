@@ -14,6 +14,7 @@ from microradar_core.coordinates import (
 from microradar_core.opensky_client import OpenSkyClient, load_credentials_file
 from microradar_core.radar_engine import RadarEngine, RadarStats
 
+from microradar_app.compass_provider import CompassProvider
 from microradar_app.config import CONFIG_PATH, CREDENTIALS_PATH, load_json, save_json
 
 
@@ -31,16 +32,20 @@ class AppSettings:
     triangles: bool = True
     info: bool = False
     heading: float = 0.0
+    compass_offset: float = 0.0
 
 
 class RadarController:
     def __init__(self) -> None:
         self.engine = RadarEngine(client=OpenSkyClient())
         self.settings = AppSettings()
+        self.compass = CompassProvider()
         self._busy = False
         self._on_fetch_done: Callable[[RadarStats], None] | None = None
         self._on_error: Callable[[str], None] | None = None
         self._on_save_done: Callable[[str], None] | None = None
+        self._on_heading_update: Callable[[], None] | None = None
+        self.compass.set_update_callback(self._on_compass_heading)
         self.load_config()
 
     def set_callbacks(
@@ -48,10 +53,47 @@ class RadarController:
         on_fetch_done: Callable[[RadarStats], None] | None = None,
         on_error: Callable[[str], None] | None = None,
         on_save_done: Callable[[str], None] | None = None,
+        on_heading_update: Callable[[], None] | None = None,
     ) -> None:
         self._on_fetch_done = on_fetch_done
         self._on_error = on_error
         self._on_save_done = on_save_done
+        self._on_heading_update = on_heading_update
+
+    def start_compass(self) -> None:
+        self.compass.start()
+        self.compass.set_calibration_offset(self.settings.compass_offset)
+        self.compass.set_active(self.settings.compass_mode)
+
+    def stop_compass(self) -> None:
+        self.compass.stop()
+
+    def _on_compass_heading(self, _heading: float) -> None:
+        if self.settings.compass_mode:
+            self.apply_settings_to_engine()
+            if self._on_heading_update:
+                self._on_heading_update()
+
+    def uses_live_compass(self) -> bool:
+        return (
+            self.settings.compass_mode
+            and self.compass.available
+            and self.compass.has_heading
+        )
+
+    def effective_heading(self) -> float:
+        if self.uses_live_compass():
+            return self.compass.heading_deg
+        return float(self.settings.heading)
+
+    def compass_status_line(self) -> str:
+        if not self.settings.compass_mode:
+            return "Rotation boussole désactivée"
+        if not self.compass.available:
+            return "Boussole : capteur indisponible (slider de secours)"
+        if self.compass.has_heading:
+            return f"Boussole : {self.compass.heading_deg:.0f}°"
+        return "Boussole : initialisation…"
 
     def read_coordinates(self) -> tuple[float, float]:
         lat = parse_coordinate(self.settings.latitude)
@@ -118,7 +160,9 @@ class RadarController:
         self.engine.show_scanline = self.settings.scanline
         self.engine.show_triangles = self.settings.triangles
         self.engine.show_info = self.settings.info
-        self.engine.heading_deg = float(self.settings.heading)
+        self.compass.set_calibration_offset(self.settings.compass_offset)
+        self.compass.set_active(self.settings.compass_mode)
+        self.engine.heading_deg = self.effective_heading()
         return True
 
     def load_config(self) -> None:
@@ -133,6 +177,7 @@ class RadarController:
             self.settings.triangles = bool(data.get("triangles", True))
             self.settings.info = bool(data.get("info", False))
             self.settings.heading = float(data.get("heading", 0.0))
+            self.settings.compass_offset = float(data.get("compass_offset", 0.0))
 
         client_id, client_secret = load_credentials_file(CREDENTIALS_PATH)
         if client_id and client_secret:
@@ -166,7 +211,8 @@ class RadarController:
             "scanline": self.settings.scanline,
             "triangles": self.settings.triangles,
             "info": self.settings.info,
-            "heading": self.engine.heading_deg,
+            "heading": self.settings.heading,
+            "compass_offset": self.settings.compass_offset,
         }
         save_json(CONFIG_PATH, payload)
         if self._on_save_done:
@@ -211,6 +257,9 @@ class RadarController:
             return False
 
     def tick(self) -> RadarStats:
+        self.compass.set_active(self.settings.compass_mode)
+        if self.settings.compass_mode and self.uses_live_compass():
+            self.engine.heading_deg = self.effective_heading()
         if self.has_valid_position() and not self._busy and self.engine.should_fetch(self.engine.now_ms()):
             self.fetch_now()
         return self.engine.build_stats(self.engine.now_ms())
@@ -223,6 +272,7 @@ class RadarController:
         )
         lines = [
             f"Position : {self.engine.latitude:.6f}°, {self.engine.longitude:.6f}°",
+            self.compass_status_line(),
             f"Avions en vol : {stats.aircraft_in_air}",
             f"Total suivi : {stats.aircraft_total}",
             f"API : {'OK' if stats.last_fetch_ok else 'ERREUR'} ({stats.last_fetch_ms:.0f} ms)",

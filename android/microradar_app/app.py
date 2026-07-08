@@ -24,8 +24,25 @@ class MicroRadarApp(MDApp):
             on_fetch_done=self._on_fetch_done,
             on_error=self._show_message,
             on_save_done=self._show_message,
+            on_heading_update=self._on_heading_update,
         )
+        self.controller.start_compass()
         return MicroRadarRoot(controller=self.controller)
+
+    def on_pause(self):
+        self.controller.stop_compass()
+        return True
+
+    def on_resume(self):
+        self.controller.start_compass()
+
+    def on_stop(self):
+        self.controller.stop_compass()
+
+    def _on_heading_update(self) -> None:
+        root = self.root
+        if root:
+            root.get_screen("main").settings.update_heading_display()
 
     def _on_fetch_done(self, stats) -> None:
         root = self.root

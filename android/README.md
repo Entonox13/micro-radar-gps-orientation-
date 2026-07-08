@@ -10,7 +10,8 @@ Portage Kivy de l'application desktop Python : mêmes options, même moteur rada
 | Rayon | En degrés (max 2,5) |
 | OpenSky | Client ID / Secret (optionnel) |
 | Rotation boussole | Fait tourner la carte (cap simulé pour l'instant) |
-| Cap simulé | Slider 0–360° — la boussole interne sera ajoutée ensuite |
+| Cap | Boussole interne du téléphone (rotation vector / magnétomètre) ou slider de secours |
+| Offset boussole | Correction en degrés si le nord est décalé |
 | Mode batterie | Intervalle API allongé |
 | Ligne de balayage | Active/désactive le sweep |
 | Triangles directionnels | Affiche la trajectoire des avions |
@@ -54,5 +55,4 @@ Les réglages sont sauvegardés dans le stockage interne de l'app (`config.json`
 
 ## Prochaine étape
 
-- Boussole interne du smartphone (remplacera le cap simulé en mode rotation boussole)
 - GPS du téléphone comme centre du radar

@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any
 
 
+def platform_name() -> str:
+    return _platform()
+
+
 def _platform() -> str:
     try:
         from kivy.utils import platform

@@ -138,18 +138,32 @@ class SettingsPanel(MDBoxLayout):
             padding=dp(12),
             spacing=dp(8),
             size_hint_y=None,
-            height=dp(120),
+            height=dp(180),
             md_bg_color=(0.07, 0.09, 0.15, 1),
         )
-        heading_card.add_widget(MDLabel(text="Cap simulé (°)", font_style="Subtitle1"))
+        self.heading_title = MDLabel(text="Cap (°)", font_style="Subtitle1")
+        heading_card.add_widget(self.heading_title)
+        self.compass_status_label = MDLabel(
+            text=self.controller.compass_status_line(),
+            font_style="Caption",
+            theme_text_color="Secondary",
+        )
+        heading_card.add_widget(self.compass_status_label)
         self.heading_slider = MDSlider(min=0, max=359, value=s.heading)
         self.heading_slider.bind(value=self._on_heading)
         heading_card.add_widget(self.heading_slider)
         self.heading_label = MDLabel(text=f"{int(s.heading)}°", font_style="Caption")
         heading_card.add_widget(self.heading_label)
+        self.compass_offset_field = MDTextField(
+            hint_text="Offset boussole (°)",
+            text=str(s.compass_offset),
+            mode="rectangle",
+        )
+        self.compass_offset_field.bind(focus=self._on_compass_offset_focus)
+        heading_card.add_widget(self.compass_offset_field)
         heading_card.add_widget(
             MDLabel(
-                text="La boussole interne du téléphone sera branchée ultérieurement.",
+                text="Activez « Rotation boussole » : le cap suit le magnétomètre du téléphone.",
                 font_style="Caption",
                 theme_text_color="Secondary",
             )
@@ -191,8 +205,20 @@ class SettingsPanel(MDBoxLayout):
         self.client_id_field.text = s.client_id
         self.client_secret_field.text = s.client_secret
         self.heading_slider.value = s.heading
-        self.heading_label.text = f"{int(s.heading)}°"
+        self.heading_label.text = f"{int(self.controller.effective_heading())}°"
+        self.compass_offset_field.text = str(s.compass_offset)
         self.position_label.text = self.controller.position_status()
+        self.update_heading_display()
+
+    def update_heading_display(self) -> None:
+        uses_compass = self.controller.uses_live_compass()
+        self.compass_status_label.text = self.controller.compass_status_line()
+        self.heading_title.text = "Cap boussole (°)" if uses_compass else "Cap manuel (°)"
+        self.heading_slider.disabled = uses_compass
+        if uses_compass:
+            self.heading_label.text = f"{int(self.controller.effective_heading())}°"
+        else:
+            self.heading_label.text = f"{int(self.controller.settings.heading)}°"
 
     def pull_settings(self) -> None:
         s = self.controller.settings
@@ -202,13 +228,27 @@ class SettingsPanel(MDBoxLayout):
         s.radius = self.radius_field.text or "1.0"
         s.client_id = self.client_id_field.text or ""
         s.client_secret = self.client_secret_field.text or ""
+        self._apply_compass_offset()
         self.controller.apply_settings_to_engine()
+
+    def _apply_compass_offset(self) -> None:
+        raw = (self.compass_offset_field.text or "0").strip().replace(",", ".")
+        try:
+            self.controller.settings.compass_offset = float(raw)
+        except ValueError:
+            self.controller.settings.compass_offset = 0.0
+
+    def _on_compass_offset_focus(self, _field, focused: bool) -> None:
+        if not focused:
+            self.pull_settings()
 
     def _set_option(self, attr: str, value: bool) -> None:
         setattr(self.controller.settings, attr, value)
         self.pull_settings()
 
     def _on_heading(self, _slider, value: float) -> None:
+        if self.controller.uses_live_compass():
+            return
         self.controller.settings.heading = value
         self.heading_label.text = f"{int(value)}°"
         self.controller.apply_settings_to_engine()
@@ -329,3 +369,4 @@ class MicroRadarRoot(ScreenManager):
         stats = self.controller.tick()
         main = self.get_screen("main")
         main.settings.update_stats(self.controller.format_stats(stats))
+        main.settings.update_heading_display()
