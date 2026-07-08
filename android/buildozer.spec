@@ -10,7 +10,7 @@ source.exclude_dirs = simulator,src,hardware,.git,.pio,.github,build,.vscode
 source.main = android/main.py
 version = 1.1.0
 
-requirements = python3==3.10.12,kivy==2.3.0,kivymd==1.2.0,requests,openssl,pyjnius,android,cython==0.29.36
+requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests,openssl,pyjnius,android,cython==0.29.36
 
 orientation = portrait
 fullscreen = 0
