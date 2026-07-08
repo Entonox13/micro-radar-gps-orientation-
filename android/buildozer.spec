@@ -10,7 +10,7 @@ source.exclude_dirs = simulator,src,hardware,.git,.pio,.github,build,.vscode
 source.main = android/main.py
 version = 1.1.0
 
-requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests,openssl,pyjnius,android
+requirements = python3==3.10.12,kivy==2.3.0,kivymd==1.2.0,requests,openssl,pyjnius,android,cython==0.29.36
 
 orientation = portrait
 fullscreen = 0
@@ -20,7 +20,8 @@ android.api = 34
 android.minapi = 24
 android.ndk = 25b
 android.accept_sdk_license = True
-android.archs = arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
+android.cython_version = 0.29.36
 
 [buildozer]
 
