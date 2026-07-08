@@ -73,3 +73,9 @@ nbproject
 simulator/config.json
 simulator/credentials.json
 simulator/__pycache__/
+android/.buildozer/
+android/bin/
+android/data/
+android/__pycache__/
+android/**/__pycache__/
+microradar_core/__pycache__/
