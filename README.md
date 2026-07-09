@@ -233,6 +233,17 @@ python app.py
 
 Use **Appliquer la position** with your GPS coordinates (from Google Maps, your phone, etc.), then check the **Statut / fiabilité** panel. See `simulator/README.md` for details.
 
+### Android app
+
+A Kivy port of the same simulator logic is in `android/` — same options, fullscreen radar (double tap to exit), and a GitHub Action that builds an installable APK.
+
+```bash
+pip install -r android/requirements.txt
+python android/main.py   # desktop UI test
+```
+
+See `android/README.md` for APK download via GitHub Actions and local build instructions. Smartphone compass integration is planned next.
+
 ## Notes
 
 > Designed and developed as part of a wedding present for a mate who loves aviation (congratulations to both him and his wife!)
