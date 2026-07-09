@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'cursor/**']
     paths:
       - 'android/**'
       - 'microradar_core/**'
@@ -40,9 +40,9 @@ jobs:
           path: |
             android/.buildozer
             ~/.buildozer
-          key: buildozer-v4-${{ hashFiles('android/buildozer.spec') }}
+          key: buildozer-v5-${{ hashFiles('android/buildozer.spec') }}
           restore-keys: |
-            buildozer-v4-
+            buildozer-v5-
 
       - name: Install system dependencies
         run: |

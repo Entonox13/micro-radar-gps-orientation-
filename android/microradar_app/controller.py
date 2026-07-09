@@ -15,7 +15,7 @@ from microradar_core.opensky_client import OpenSkyClient, load_credentials_file
 from microradar_core.radar_engine import RadarEngine, RadarStats
 
 from microradar_app.compass_provider import CompassProvider
-from microradar_app.config import CONFIG_PATH, CREDENTIALS_PATH, load_json, save_json
+from microradar_app.config import get_config_path, get_credentials_path, load_json, save_json
 
 
 @dataclass
@@ -166,7 +166,7 @@ class RadarController:
         return True
 
     def load_config(self) -> None:
-        data = load_json(CONFIG_PATH)
+        data = load_json(get_config_path())
         if data:
             self.settings.latitude = str(data.get("latitude", ""))
             self.settings.longitude = str(data.get("longitude", ""))
@@ -179,7 +179,7 @@ class RadarController:
             self.settings.heading = float(data.get("heading", 0.0))
             self.settings.compass_offset = float(data.get("compass_offset", 0.0))
 
-        client_id, client_secret = load_credentials_file(CREDENTIALS_PATH)
+        client_id, client_secret = load_credentials_file(get_credentials_path())
         if client_id and client_secret:
             self.settings.client_id = client_id
             self.settings.client_secret = client_secret
@@ -214,9 +214,9 @@ class RadarController:
             "heading": self.settings.heading,
             "compass_offset": self.settings.compass_offset,
         }
-        save_json(CONFIG_PATH, payload)
+        save_json(get_config_path(), payload)
         if self._on_save_done:
-            self._on_save_done(f"Configuration enregistrée dans\n{CONFIG_PATH}")
+            self._on_save_done(f"Configuration enregistrée dans\n{get_config_path()}")
 
     def fetch_now(self) -> None:
         if self._busy:

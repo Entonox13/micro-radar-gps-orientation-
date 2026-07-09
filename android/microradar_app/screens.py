@@ -15,6 +15,7 @@ from kivymd.uix.slider import MDSlider
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.toolbar import MDTopAppBar
 
+from microradar_app.android_log import log_exception
 from microradar_app.controller import RadarController
 from microradar_app.radar_widget import RadarWidget
 
@@ -25,6 +26,8 @@ class RadarSettingsPanel(MDBoxLayout):
         self.orientation = "vertical"
         self.spacing = dp(8)
         self.padding = (dp(12), dp(8), dp(12), dp(16))
+        self.size_hint_y = None
+        self.bind(minimum_height=self.setter("height"))
         self.controller = controller
         self._build_fields()
 
@@ -149,11 +152,11 @@ class RadarSettingsPanel(MDBoxLayout):
             theme_text_color="Secondary",
         )
         heading_card.add_widget(self.compass_status_label)
+        self.heading_label = MDLabel(text=f"{int(s.heading)}°", font_style="Caption")
+        heading_card.add_widget(self.heading_label)
         self.heading_slider = MDSlider(min=0, max=359, value=s.heading)
         self.heading_slider.bind(value=self._on_heading)
         heading_card.add_widget(self.heading_slider)
-        self.heading_label = MDLabel(text=f"{int(s.heading)}°", font_style="Caption")
-        heading_card.add_widget(self.heading_label)
         self.compass_offset_field = MDTextField(
             hint_text="Offset boussole (°)",
             text=str(s.compass_offset),
@@ -241,6 +244,8 @@ class RadarSettingsPanel(MDBoxLayout):
         self.pull_settings()
 
     def _on_heading(self, _slider, value: float) -> None:
+        if not hasattr(self, "heading_label"):
+            return
         if self.controller.uses_live_compass():
             return
         self.controller.settings.heading = value
@@ -306,7 +311,7 @@ class MainScreen(Screen):
         radar_card.add_widget(self.radar)
         body.add_widget(radar_card)
 
-        scroll = MDScrollView()
+        scroll = MDScrollView(size_hint_y=1, do_scroll_x=False)
         self.settings = RadarSettingsPanel(controller)
         scroll.add_widget(self.settings)
         body.add_widget(scroll)
@@ -343,6 +348,7 @@ class FullscreenScreen(Screen):
             theme_text_color="Secondary",
             font_style="Caption",
         )
+        self.hint.bind(size=lambda inst, _val: setattr(inst, "text_size", (inst.width, None)))
         root.add_widget(self.hint)
         self.add_widget(root)
 
@@ -357,10 +363,19 @@ class MicroRadarRoot(ScreenManager):
         self.controller = controller
         self.add_widget(MainScreen(controller=controller, manager=self, name="main"))
         self.add_widget(FullscreenScreen(controller=controller, manager=self, name="fullscreen"))
-        Clock.schedule_interval(self._tick, 0.05)
+        self.current = "main"
+        self._tick_event = None
+        Clock.schedule_once(self._start_tick, 0.1)
+
+    def _start_tick(self, _dt: float) -> None:
+        if self._tick_event is None:
+            self._tick_event = Clock.schedule_interval(self._tick, 0.05)
 
     def _tick(self, _dt: float) -> None:
-        stats = self.controller.tick()
-        main = self.get_screen("main")
-        main.settings.update_stats(self.controller.format_stats(stats))
-        main.settings.update_heading_display()
+        try:
+            stats = self.controller.tick()
+            main = self.get_screen("main")
+            main.settings.update_stats(self.controller.format_stats(stats))
+            main.settings.update_heading_display()
+        except Exception:
+            log_exception("ui tick failed")
