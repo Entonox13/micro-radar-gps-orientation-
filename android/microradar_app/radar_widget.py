@@ -10,6 +10,7 @@ from kivy.graphics import Color, Ellipse, Line, Rectangle, Triangle
 from kivy.properties import BooleanProperty, NumericProperty, ObjectProperty
 from kivy.uix.widget import Widget
 
+from microradar_app.android_log import log_exception
 from microradar_core.aircraft_labels import aircraft_info_label
 from microradar_core.radar_engine import RadarEngine, SCREEN_SIZE
 
@@ -26,7 +27,9 @@ class RadarWidget(Widget):
         self._last_tap_time = 0.0
         self._double_tap_callback = None
         self.bind(size=self._redraw, pos=self._redraw)
-        Clock.schedule_interval(self._tick, 1 / 20)
+        Clock.schedule_once(lambda _dt: setattr(
+            self, "_tick_event", Clock.schedule_interval(self._tick, 1 / 20)
+        ), 0.1)
 
     def on_engine(self, _instance, engine: RadarEngine | None) -> None:
         if engine is not None:
@@ -59,6 +62,12 @@ class RadarWidget(Widget):
         if self.canvas is None or self.engine is None or self.width <= 0 or self.height <= 0:
             return
 
+        try:
+            self._draw_radar()
+        except Exception:
+            log_exception("radar redraw failed")
+
+    def _draw_radar(self) -> None:
         self.canvas.clear()
 
         side = min(self.width, self.height)

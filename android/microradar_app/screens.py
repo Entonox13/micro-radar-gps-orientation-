@@ -15,6 +15,7 @@ from kivymd.uix.slider import MDSlider
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.toolbar import MDTopAppBar
 
+from microradar_app.android_log import log_exception
 from microradar_app.controller import RadarController
 from microradar_app.radar_widget import RadarWidget
 
@@ -310,7 +311,7 @@ class MainScreen(Screen):
         radar_card.add_widget(self.radar)
         body.add_widget(radar_card)
 
-        scroll = MDScrollView()
+        scroll = MDScrollView(size_hint_y=1, do_scroll_x=False)
         self.settings = RadarSettingsPanel(controller)
         scroll.add_widget(self.settings)
         body.add_widget(scroll)
@@ -362,10 +363,19 @@ class MicroRadarRoot(ScreenManager):
         self.controller = controller
         self.add_widget(MainScreen(controller=controller, manager=self, name="main"))
         self.add_widget(FullscreenScreen(controller=controller, manager=self, name="fullscreen"))
-        Clock.schedule_interval(self._tick, 0.05)
+        self.current = "main"
+        self._tick_event = None
+        Clock.schedule_once(self._start_tick, 0.1)
+
+    def _start_tick(self, _dt: float) -> None:
+        if self._tick_event is None:
+            self._tick_event = Clock.schedule_interval(self._tick, 0.05)
 
     def _tick(self, _dt: float) -> None:
-        stats = self.controller.tick()
-        main = self.get_screen("main")
-        main.settings.update_stats(self.controller.format_stats(stats))
-        main.settings.update_heading_display()
+        try:
+            stats = self.controller.tick()
+            main = self.get_screen("main")
+            main.settings.update_stats(self.controller.format_stats(stats))
+            main.settings.update_heading_display()
+        except Exception:
+            log_exception("ui tick failed")

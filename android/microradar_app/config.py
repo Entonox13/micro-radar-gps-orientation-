@@ -29,14 +29,27 @@ def config_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "data"
 
 
-CONFIG_DIR = config_dir()
+_config_dir_cache: Path | None = None
 
-CONFIG_PATH = CONFIG_DIR / "config.json"
-CREDENTIALS_PATH = CONFIG_DIR / "credentials.json"
+
+def get_config_dir() -> Path:
+    """Resolve storage path lazily (Android activity may not be ready at import)."""
+    global _config_dir_cache
+    if _config_dir_cache is None:
+        _config_dir_cache = config_dir()
+    return _config_dir_cache
+
+
+def get_config_path() -> Path:
+    return get_config_dir() / "config.json"
+
+
+def get_credentials_path() -> Path:
+    return get_config_dir() / "credentials.json"
 
 
 def ensure_config_dir() -> None:
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    get_config_dir().mkdir(parents=True, exist_ok=True)
 
 
 def load_json(path: Path) -> dict[str, Any]:
