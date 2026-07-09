@@ -76,6 +76,7 @@ simulator/__pycache__/
 android/.buildozer/
 android/bin/
 android/data/
+android/microradar_core/
 android/__pycache__/
 android/**/__pycache__/
 microradar_core/__pycache__/

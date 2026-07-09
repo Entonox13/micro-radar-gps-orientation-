@@ -58,6 +58,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install buildozer cython==0.29.36
 
+      - name: Stage shared package for APK bundle
+        run: cp -r microradar_core android/microradar_core
+
       - name: Build debug APK
         working-directory: android
         env:

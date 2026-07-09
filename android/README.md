@@ -36,6 +36,7 @@ Prérequis : Linux (ou WSL), Java 17, dépendances buildozer.
 
 ```bash
 cd android
+cp -r ../microradar_core ./microradar_core
 pip install buildozer cython==0.29.36
 buildozer android debug
 ```

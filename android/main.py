@@ -9,7 +9,7 @@ from pathlib import Path
 ANDROID_DIR = Path(__file__).resolve().parent
 REPO_ROOT = ANDROID_DIR.parent
 
-for path in (str(REPO_ROOT), str(ANDROID_DIR)):
+for path in (str(ANDROID_DIR), str(REPO_ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
 

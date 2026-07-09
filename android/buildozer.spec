@@ -3,11 +3,11 @@
 title = Micro Radar
 package.name = microradar
 package.domain = org.microradar
-source.dir = ..
+source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
-source.include_patterns = android/main.py,android/microradar_app/*,microradar_core/*
-source.exclude_dirs = simulator,src,hardware,.git,.pio,.github,build,.vscode
-source.main = android/main.py
+source.include_patterns = main.py,microradar_app/*,microradar_core/*
+source.exclude_dirs = data,.buildozer,bin
+source.main = main.py
 version = 1.1.0
 
 requirements = python3==3.11.8,hostpython3==3.11.8,kivy==2.3.0,kivymd==1.2.0,requests,openssl,pyjnius,android,cython==0.29.36
