@@ -25,6 +25,8 @@ class RadarSettingsPanel(MDBoxLayout):
         self.orientation = "vertical"
         self.spacing = dp(8)
         self.padding = (dp(12), dp(8), dp(12), dp(16))
+        self.size_hint_y = None
+        self.bind(minimum_height=self.setter("height"))
         self.controller = controller
         self._build_fields()
 
@@ -149,11 +151,11 @@ class RadarSettingsPanel(MDBoxLayout):
             theme_text_color="Secondary",
         )
         heading_card.add_widget(self.compass_status_label)
+        self.heading_label = MDLabel(text=f"{int(s.heading)}°", font_style="Caption")
+        heading_card.add_widget(self.heading_label)
         self.heading_slider = MDSlider(min=0, max=359, value=s.heading)
         self.heading_slider.bind(value=self._on_heading)
         heading_card.add_widget(self.heading_slider)
-        self.heading_label = MDLabel(text=f"{int(s.heading)}°", font_style="Caption")
-        heading_card.add_widget(self.heading_label)
         self.compass_offset_field = MDTextField(
             hint_text="Offset boussole (°)",
             text=str(s.compass_offset),
@@ -241,6 +243,8 @@ class RadarSettingsPanel(MDBoxLayout):
         self.pull_settings()
 
     def _on_heading(self, _slider, value: float) -> None:
+        if not hasattr(self, "heading_label"):
+            return
         if self.controller.uses_live_compass():
             return
         self.controller.settings.heading = value
@@ -343,6 +347,7 @@ class FullscreenScreen(Screen):
             theme_text_color="Secondary",
             font_style="Caption",
         )
+        self.hint.bind(size=lambda inst, _val: setattr(inst, "text_size", (inst.width, None)))
         root.add_widget(self.hint)
         self.add_widget(root)
 

@@ -121,52 +121,59 @@ class _AndroidCompassBackend(_CompassBackend):
         )
 
     def start(self) -> None:
-        from jnius import PythonJavaClass, autoclass, java_method
+        try:
+            from jnius import PythonJavaClass, autoclass, java_method
 
-        PythonActivity = autoclass("org.kivy.android.PythonActivity")
-        Context = autoclass("android.content.Context")
-        self._SensorManager = autoclass("android.hardware.SensorManager")
-        self._Sensor = autoclass("android.hardware.Sensor")
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Context = autoclass("android.content.Context")
+            self._SensorManager = autoclass("android.hardware.SensorManager")
+            self._Sensor = autoclass("android.hardware.Sensor")
 
-        activity = PythonActivity.mActivity
-        self._sensor_manager = activity.getSystemService(Context.SENSOR_SERVICE)
+            activity = PythonActivity.mActivity
+            if activity is None:
+                return
+            self._sensor_manager = activity.getSystemService(Context.SENSOR_SERVICE)
+            if self._sensor_manager is None:
+                return
 
-        self._rotation_sensor = self._sensor_manager.getDefaultSensor(
-            self._Sensor.TYPE_ROTATION_VECTOR
-        )
-        if self._rotation_sensor is None:
             self._rotation_sensor = self._sensor_manager.getDefaultSensor(
-                self._Sensor.TYPE_GAME_ROTATION_VECTOR
+                self._Sensor.TYPE_ROTATION_VECTOR
             )
+            if self._rotation_sensor is None:
+                self._rotation_sensor = self._sensor_manager.getDefaultSensor(
+                    self._Sensor.TYPE_GAME_ROTATION_VECTOR
+                )
 
-        if self._rotation_sensor is not None:
-            self._use_rotation_vector = True
-        else:
-            self._accel_sensor = self._sensor_manager.getDefaultSensor(
-                self._Sensor.TYPE_ACCELEROMETER
-            )
-            self._magnet_sensor = self._sensor_manager.getDefaultSensor(
-                self._Sensor.TYPE_MAGNETIC_FIELD
-            )
+            if self._rotation_sensor is not None:
+                self._use_rotation_vector = True
+            else:
+                self._accel_sensor = self._sensor_manager.getDefaultSensor(
+                    self._Sensor.TYPE_ACCELEROMETER
+                )
+                self._magnet_sensor = self._sensor_manager.getDefaultSensor(
+                    self._Sensor.TYPE_MAGNETIC_FIELD
+                )
 
-        backend = self
+            backend = self
 
-        class SensorListener(PythonJavaClass):
-            __javainterfaces__ = ["android/hardware/SensorEventListener"]
-            __javacontext__ = "app"
+            class SensorListener(PythonJavaClass):
+                __javainterfaces__ = ["android/hardware/SensorEventListener"]
+                __javacontext__ = "app"
 
-            @java_method("(Landroid/hardware/SensorEvent;)V")
-            def onSensorChanged(self, event):
-                backend._on_sensor_event(event)
+                @java_method("(Landroid/hardware/SensorEvent;)V")
+                def onSensorChanged(self, event):
+                    backend._on_sensor_event(event)
 
-            @java_method("(Landroid/hardware/Sensor;I)V")
-            def onAccuracyChanged(self, sensor, accuracy):
-                pass
+                @java_method("(Landroid/hardware/Sensor;I)V")
+                def onAccuracyChanged(self, sensor, accuracy):
+                    pass
 
-        self._listener = SensorListener()
-        self._provider.available = self.is_available()
-        if self._listening:
-            self._register_sensors()
+            self._listener = SensorListener()
+            self._provider.available = self.is_available()
+            if self._listening:
+                self._register_sensors()
+        except Exception:
+            self._provider.available = False
 
     def stop(self) -> None:
         self._unregister_sensors()

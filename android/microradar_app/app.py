@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import sys
+import traceback
+
+from kivy.clock import Clock
+from kivy.core.window import Window
 from kivymd.app import MDApp
 from kivymd.uix.button import MDFlatButton
 from kivymd.uix.dialog import MDDialog
 
+from microradar_app.android_log import log_error, log_exception, log_info
 from microradar_app.controller import RadarController
 from microradar_app.screens import MicroRadarRoot
+
+
+def _install_excepthook() -> None:
+    def _hook(exc_type, exc, tb):
+        log_error("".join(traceback.format_exception(exc_type, exc, tb)))
+        sys.__excepthook__(exc_type, exc, tb)
+
+    sys.excepthook = _hook
 
 
 class MicroRadarApp(MDApp):
@@ -20,24 +34,47 @@ class MicroRadarApp(MDApp):
         self._dialog: MDDialog | None = None
 
     def build(self):
-        self.controller.set_callbacks(
-            on_fetch_done=self._on_fetch_done,
-            on_error=self._show_message,
-            on_save_done=self._show_message,
-            on_heading_update=self._on_heading_update,
-        )
-        self.controller.start_compass()
-        return MicroRadarRoot(controller=self.controller)
+        try:
+            log_info("build() start")
+            Window.softinput_mode = "adjustResize"
+            self.controller.set_callbacks(
+                on_fetch_done=self._on_fetch_done,
+                on_error=self._show_message,
+                on_save_done=self._show_message,
+                on_heading_update=self._on_heading_update,
+            )
+            root = MicroRadarRoot(controller=self.controller)
+            log_info("build() done")
+            return root
+        except Exception:
+            log_exception("build() failed")
+            raise
+
+    def on_start(self):
+        Clock.schedule_once(lambda _dt: self._safe_start_compass(), 0.5)
+
+    def _safe_start_compass(self) -> None:
+        try:
+            self.controller.start_compass()
+            log_info("compass started")
+        except Exception:
+            log_exception("compass start failed")
 
     def on_pause(self):
-        self.controller.stop_compass()
+        try:
+            self.controller.stop_compass()
+        except Exception:
+            log_exception("compass stop failed on pause")
         return True
 
     def on_resume(self):
-        self.controller.start_compass()
+        Clock.schedule_once(lambda _dt: self._safe_start_compass(), 0.25)
 
     def on_stop(self):
-        self.controller.stop_compass()
+        try:
+            self.controller.stop_compass()
+        except Exception:
+            log_exception("compass stop failed on stop")
 
     def _on_heading_update(self) -> None:
         root = self.root
@@ -66,4 +103,6 @@ class MicroRadarApp(MDApp):
 
 
 def main() -> None:
+    _install_excepthook()
+    log_info("MicroRadar main()")
     MicroRadarApp().run()
