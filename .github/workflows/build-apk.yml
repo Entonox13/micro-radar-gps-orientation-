@@ -40,9 +40,9 @@ jobs:
           path: |
             android/.buildozer
             ~/.buildozer
-          key: buildozer-v5-${{ hashFiles('android/buildozer.spec') }}
+          key: buildozer-v6-${{ hashFiles('android/buildozer.spec') }}
           restore-keys: |
-            buildozer-v5-
+            buildozer-v6-
 
       - name: Install system dependencies
         run: |
