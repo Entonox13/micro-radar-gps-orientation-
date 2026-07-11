@@ -7,6 +7,20 @@ import os
 import sys
 from pathlib import Path
 
+# Configure Kivy before any kivy/kivymd import (required on Android).
+os.environ.setdefault("KIVY_NO_CONSOLELOG", "1")
+from kivy.config import Config  # noqa: E402
+
+Config.set("kivy", "log_level", "info")
+Config.set("graphics", "multisamples", "0")
+
+try:
+    import certifi
+
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+except ImportError:
+    pass
+
 ANDROID_DIR = Path(__file__).resolve().parent
 
 # On device, main.py and packaged modules live in the same private folder.

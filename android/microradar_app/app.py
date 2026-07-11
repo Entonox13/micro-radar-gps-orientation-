@@ -30,13 +30,15 @@ class MicroRadarApp(MDApp):
         self.title = "Micro Radar"
         self.theme_cls.theme_style = "Dark"
         self.theme_cls.primary_palette = "Green"
-        self.controller = RadarController()
+        self.controller: RadarController | None = None
         self._dialog: MDDialog | None = None
 
     def build(self):
         try:
             log_info("build() start")
             Window.softinput_mode = "adjustResize"
+            if self.controller is None:
+                self.controller = RadarController(load_persisted=False)
             self.controller.set_callbacks(
                 on_fetch_done=self._on_fetch_done,
                 on_error=self._show_message,
@@ -51,9 +53,20 @@ class MicroRadarApp(MDApp):
             raise
 
     def on_start(self):
+        if self.controller is not None:
+            try:
+                self.controller.load_config()
+                log_info("config loaded")
+                root = self.root
+                if root:
+                    root.get_screen("main").settings.sync_from_controller()
+            except Exception:
+                log_exception("config load failed")
         Clock.schedule_once(lambda _dt: self._safe_start_compass(), 0.5)
 
     def _safe_start_compass(self) -> None:
+        if self.controller is None:
+            return
         try:
             self.controller.start_compass()
             log_info("compass started")
@@ -61,6 +74,8 @@ class MicroRadarApp(MDApp):
             log_exception("compass start failed")
 
     def on_pause(self):
+        if self.controller is None:
+            return True
         try:
             self.controller.stop_compass()
         except Exception:
@@ -71,17 +86,23 @@ class MicroRadarApp(MDApp):
         Clock.schedule_once(lambda _dt: self._safe_start_compass(), 0.25)
 
     def on_stop(self):
+        if self.controller is None:
+            return
         try:
             self.controller.stop_compass()
         except Exception:
             log_exception("compass stop failed on stop")
 
     def _on_heading_update(self) -> None:
+        if self.controller is None:
+            return
         root = self.root
         if root:
             root.get_screen("main").settings.update_heading_display()
 
     def _on_fetch_done(self, stats) -> None:
+        if self.controller is None:
+            return
         root = self.root
         if root:
             root.get_screen("main").settings.update_stats(self.controller.format_stats(stats))

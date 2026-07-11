@@ -6,9 +6,10 @@ import math
 import time
 
 from kivy.clock import Clock
-from kivy.graphics import Color, Ellipse, Line, Rectangle, Triangle
+from kivy.graphics import Color, Ellipse, InstructionGroup, Line, Rectangle, Triangle
 from kivy.properties import BooleanProperty, NumericProperty, ObjectProperty
 from kivy.uix.widget import Widget
+from kivy.utils import platform as kivy_platform
 
 from microradar_app.android_log import log_exception
 from microradar_core.aircraft_labels import aircraft_info_label
@@ -26,10 +27,15 @@ class RadarWidget(Widget):
         self._scan_phase = 0.0
         self._last_tap_time = 0.0
         self._double_tap_callback = None
+        self._gfx = InstructionGroup()
+        self.canvas.add(self._gfx)
+        self._tick_event = None
         self.bind(size=self._redraw, pos=self._redraw)
-        Clock.schedule_once(lambda _dt: setattr(
-            self, "_tick_event", Clock.schedule_interval(self._tick, 1 / 20)
-        ), 0.1)
+        Clock.schedule_once(self._start_tick, 0.25)
+
+    def _start_tick(self, _dt: float) -> None:
+        if not hasattr(self, "_tick_event") or self._tick_event is None:
+            self._tick_event = Clock.schedule_interval(self._tick, 1 / 20)
 
     def on_engine(self, _instance, engine: RadarEngine | None) -> None:
         if engine is not None:
@@ -68,17 +74,19 @@ class RadarWidget(Widget):
             log_exception("radar redraw failed")
 
     def _draw_radar(self) -> None:
-        self.canvas.clear()
+        self._gfx.clear()
 
         side = min(self.width, self.height)
         scale = side / SCREEN_SIZE
+        # width > 1 uses triangulation and can SIGSEGV on Android GLES.
+        line_w = 1.0 if kivy_platform == "android" else max(1.0, 2 * scale)
         offset_x = self.x + (self.width - side) / 2
         offset_y = self.y + (self.height - side) / 2
         cx = offset_x + side / 2
         cy = offset_y + side / 2
         outer = side / 2 - 2 * scale
 
-        with self.canvas:
+        with self._gfx:
             Color(0, 0, 0, 1)
             Rectangle(pos=(offset_x, offset_y), size=(side, side))
 
@@ -86,7 +94,7 @@ class RadarWidget(Widget):
                 Color(0.133, 0.773, 0.369, 1)
                 Line(
                     rectangle=(offset_x, offset_y, side, side),
-                    width=2 * scale,
+                    width=line_w,
                 )
 
             for factor, rgb in [
@@ -96,7 +104,7 @@ class RadarWidget(Widget):
             ]:
                 r = outer * factor
                 Color(*rgb, 1)
-                Line(circle=(cx, cy, r), width=2 * scale)
+                Line(circle=(cx, cy, r), width=line_w)
 
             if self.engine.show_scanline:
                 if self.engine.compass_mode:
@@ -107,7 +115,7 @@ class RadarWidget(Widget):
                 ex = cx + math.cos(angle) * outer
                 ey = cy - math.sin(angle) * outer
                 Color(0, 200 / 255, 0, 1)
-                Line(points=[cx, cy, ex, ey], width=2 * scale)
+                Line(points=[cx, cy, ex, ey], width=line_w)
 
             now_ms = self.engine.now_ms()
             for tracked, x, y in self.engine.visible_aircraft(now_ms):

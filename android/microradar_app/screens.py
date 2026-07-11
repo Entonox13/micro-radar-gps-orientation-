@@ -13,8 +13,6 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.slider import MDSlider
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.toolbar import MDTopAppBar
-
 from microradar_app.android_log import log_exception
 from microradar_app.controller import RadarController
 from microradar_app.radar_widget import RadarWidget
@@ -29,7 +27,9 @@ class RadarSettingsPanel(MDBoxLayout):
         self.size_hint_y = None
         self.bind(minimum_height=self.setter("height"))
         self.controller = controller
+        self._suppress_events = True
         self._build_fields()
+        self._suppress_events = False
 
     def _build_fields(self) -> None:
         s = self.controller.settings
@@ -240,6 +240,8 @@ class RadarSettingsPanel(MDBoxLayout):
             self.controller.settings.compass_offset = 0.0
 
     def _set_option(self, attr: str, value: bool) -> None:
+        if self._suppress_events:
+            return
         setattr(self.controller.settings, attr, value)
         self.pull_settings()
 
@@ -277,13 +279,23 @@ class MainScreen(Screen):
         self.screen_manager = manager
 
         root = MDBoxLayout(orientation="vertical")
-        root.add_widget(
-            MDTopAppBar(
-                title="Micro Radar",
-                elevation=2,
-                md_bg_color=(0.07, 0.09, 0.15, 1),
+        # MDTopAppBar provoque un crash natif (SIGSEGV) sur plusieurs appareils Android.
+        header = MDBoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(56),
+            md_bg_color=(0.07, 0.09, 0.15, 1),
+            padding=(dp(16), dp(14)),
+        )
+        header.add_widget(
+            MDLabel(
+                text="Micro Radar",
+                font_style="H6",
+                theme_text_color="Primary",
+                valign="center",
             )
         )
+        root.add_widget(header)
 
         body = MDBoxLayout(orientation="vertical", spacing=dp(8), padding=dp(8))
 

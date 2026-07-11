@@ -36,7 +36,7 @@ class AppSettings:
 
 
 class RadarController:
-    def __init__(self) -> None:
+    def __init__(self, load_persisted: bool = True) -> None:
         self.engine = RadarEngine(client=OpenSkyClient())
         self.settings = AppSettings()
         self.compass = CompassProvider()
@@ -46,7 +46,8 @@ class RadarController:
         self._on_save_done: Callable[[str], None] | None = None
         self._on_heading_update: Callable[[], None] | None = None
         self.compass.set_update_callback(self._on_compass_heading)
-        self.load_config()
+        if load_persisted:
+            self.load_config()
 
     def set_callbacks(
         self,
