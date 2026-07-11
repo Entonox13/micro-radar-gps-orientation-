@@ -15,6 +15,8 @@ from microradar_app.android_log import log_error, log_exception, log_info
 from microradar_app.controller import RadarController
 from microradar_app.screens import MicroRadarRoot
 
+COMPASS_START_DELAY_S = 0.5
+
 
 def _install_excepthook() -> None:
     def _hook(exc_type, exc, tb):
@@ -37,8 +39,7 @@ class MicroRadarApp(MDApp):
         try:
             log_info("build() start")
             Window.softinput_mode = "adjustResize"
-            if self.controller is None:
-                self.controller = RadarController(load_persisted=False)
+            self.controller = RadarController(load_persisted=False)
             self.controller.set_callbacks(
                 on_fetch_done=self._on_fetch_done,
                 on_error=self._show_message,
@@ -53,16 +54,28 @@ class MicroRadarApp(MDApp):
             raise
 
     def on_start(self):
-        if self.controller is not None:
-            try:
-                self.controller.load_config()
-                log_info("config loaded")
-                root = self.root
-                if root:
-                    root.get_screen("main").settings.sync_from_controller()
-            except Exception:
-                log_exception("config load failed")
-        Clock.schedule_once(lambda _dt: self._safe_start_compass(), 0.5)
+        self._load_persisted_config()
+        Clock.schedule_once(lambda _dt: self._safe_start_compass(), COMPASS_START_DELAY_S)
+
+    def on_pause(self):
+        self._safe_stop_compass()
+        return True
+
+    def on_resume(self):
+        Clock.schedule_once(lambda _dt: self._safe_start_compass(), 0.25)
+
+    def on_stop(self):
+        self._safe_stop_compass()
+
+    def _load_persisted_config(self) -> None:
+        if self.controller is None or not isinstance(self.root, MicroRadarRoot):
+            return
+        try:
+            self.controller.load_config()
+            self.root.main_screen.settings.sync_from_controller()
+            log_info("config loaded")
+        except Exception:
+            log_exception("config load failed")
 
     def _safe_start_compass(self) -> None:
         if self.controller is None:
@@ -73,39 +86,29 @@ class MicroRadarApp(MDApp):
         except Exception:
             log_exception("compass start failed")
 
-    def on_pause(self):
-        if self.controller is None:
-            return True
-        try:
-            self.controller.stop_compass()
-        except Exception:
-            log_exception("compass stop failed on pause")
-        return True
-
-    def on_resume(self):
-        Clock.schedule_once(lambda _dt: self._safe_start_compass(), 0.25)
-
-    def on_stop(self):
+    def _safe_stop_compass(self) -> None:
         if self.controller is None:
             return
         try:
             self.controller.stop_compass()
         except Exception:
-            log_exception("compass stop failed on stop")
+            log_exception("compass stop failed")
+
+    def _main_settings(self):
+        root = self.root
+        if isinstance(root, MicroRadarRoot):
+            return root.main_screen.settings
+        return None
 
     def _on_heading_update(self) -> None:
-        if self.controller is None:
-            return
-        root = self.root
-        if root:
-            root.get_screen("main").settings.update_heading_display()
+        settings = self._main_settings()
+        if settings:
+            settings.update_heading_display()
 
     def _on_fetch_done(self, stats) -> None:
-        if self.controller is None:
-            return
-        root = self.root
-        if root:
-            root.get_screen("main").settings.update_stats(self.controller.format_stats(stats))
+        settings = self._main_settings()
+        if settings and self.controller:
+            settings.update_stats(self.controller.format_stats(stats))
 
     def _show_message(self, text: str) -> None:
         if self._dialog:

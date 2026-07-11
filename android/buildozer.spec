@@ -8,7 +8,7 @@ source.include_exts = py,png,jpg,kv,atlas,json
 source.include_patterns = main.py,microradar_app/*,microradar_core/*
 source.exclude_dirs = data,.buildozer,bin
 source.main = main.py
-version = 1.1.3
+version = 1.1.4
 
 requirements = python3==3.11.8,hostpython3==3.11.8,kivy==2.3.0,kivymd==1.2.0,requests,urllib3,charset-normalizer,idna,certifi,openssl,pyjnius,android,cython==0.29.36,pillow,sdl2_ttf==2.0.15
 
