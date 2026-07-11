@@ -3,24 +3,11 @@
 
 from __future__ import annotations
 
-import os
-import sys
-from pathlib import Path
+from microradar_app.bootstrap import bootstrap
 
-ANDROID_DIR = Path(__file__).resolve().parent
+bootstrap()
 
-# On device, main.py and packaged modules live in the same private folder.
-for path in (str(ANDROID_DIR),):
-    if path not in sys.path:
-        sys.path.insert(0, path)
-
-# Desktop dev: microradar_core lives at repo root.
-if "ANDROID_ARGUMENT" not in os.environ:
-    repo_root = ANDROID_DIR.parent
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-
-from microradar_app.app import main
+from microradar_app.app import main  # noqa: E402
 
 if __name__ == "__main__":
     main()
